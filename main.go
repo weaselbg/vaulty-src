@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -18,9 +19,11 @@ type Login struct {
 }
 
 type UploadedFile struct {
-	FileName       string
-	Path           string
-	HashedPassword string
+	FileName string
+	Path     string
+	Password string
+	Owner    string
+	ID       string
 }
 
 var users = map[string]Login{}
@@ -152,6 +155,18 @@ func logout(minato *gin.Context) {
 func UploadVault(minato *gin.Context) {
 	itachi := minato.Writer
 	shisui := minato.Request
+	username := shisui.FormValue("username")
+	password := shisui.FormValue("userpassword")
+
+	user, ok := users[username]
+	if !ok {
+		http.Error(itachi, "User does not exist.", http.StatusNotFound)
+		return
+	}
+	if !checkPasswordHash(password, user.HashedPassword) {
+		http.Error(itachi, "Wrong password.", http.StatusUnauthorized)
+		return
+	}
 
 	if err := Authorize(shisui); err != nil {
 		http.Error(itachi, "Unautorized", http.StatusUnauthorized)
@@ -166,21 +181,24 @@ func UploadVault(minato *gin.Context) {
 	}
 
 	id := uuid.New().String()
-	fullName := id + filepath.Ext(file.Filename)
-	password := shisui.FormValue("password")
-	encryptedpassword, err := hashPassword(password)
+	fullName := filepath.Base(file.Filename)
+
+	fileOwner := username
+	filepassword := shisui.FormValue("filepassword")
+	hashedpassword, err := hashPassword(filepassword)
 	if err != nil {
-		http.Error(itachi, "Hashing failed", http.StatusInternalServerError)
+		http.Error(itachi, "Failed to hash password", http.StatusInternalServerError)
 		return
 	}
-	path := filepath.Join("./uploads", fullName)
+	path := filepath.Join("./uploads", fileOwner, id)
+	os.MkdirAll(filepath.Dir(path), 0755)
 
-	content, _ := upload[id]
-	content.FileName = fullName
-	content.HashedPassword = encryptedpassword
-	content.Path = path
-
-	upload[id] = content
+	upload[id] = UploadedFile{
+		FileName: fullName,
+		Password: hashedpassword,
+		Path:     path,
+		ID:       id,
+	}
 
 	err = minato.SaveUploadedFile(file, path)
 	if err != nil {
@@ -207,9 +225,57 @@ func ViewVault(minato *gin.Context) {
 		return
 	}
 
-	if !checkPasswordHash(password, file.HashedPassword) {
+	if !checkPasswordHash(password, upload[id].Password) {
 		http.Error(itachi, "Incorrect password.", http.StatusUnauthorized)
 		return
 	}
 	minato.File(file.Path)
+}
+
+func DeleteVault(minato *gin.Context) {
+	itachi := minato.Writer
+	shisui := minato.Request
+
+	if err := Authorize(shisui); err != nil {
+		http.Error(itachi, "Unauthorized", http.StatusUnauthorized)
+	}
+
+	filepassword := shisui.FormValue("password")
+	id := minato.Param("id")
+	if err := Authorize(shisui); err != nil {
+		http.Error(itachi, "Unauthorized.", http.StatusUnauthorized)
+		return
+	}
+	file, ok := upload[id]
+
+	if !ok {
+		http.Error(itachi, "File not found.", http.StatusNotFound)
+		return
+	}
+
+	if !checkPasswordHash(filepassword, upload[id].Password) {
+		http.Error(itachi, "Incorrect file password.", http.StatusUnauthorized)
+		return
+	}
+
+	os.Remove(file.Path)
+	fmt.Println("File deleted.")
+
+}
+
+func viewAllVault(minato *gin.Context) {
+	shisui := minato.Request
+	itachi := minato.Writer
+	username := minato.Param("username")
+	if err := Authorize(shisui); err != nil {
+		http.Error(itachi, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	for _, file := range upload {
+		if file.Owner == username {
+			fmt.Println(file.ID)
+			fmt.Println(file.FileName)
+			fmt.Println(file.Path)
+		}
+	}
 }
