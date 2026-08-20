@@ -18,9 +18,9 @@ type Login struct {
 }
 
 type UploadedFile struct {
-	FileName string
-	Path     string
-	Password string
+	FileName       string
+	Path           string
+	HashedPassword string
 }
 
 var users = map[string]Login{}
@@ -34,6 +34,8 @@ func main() {
 	router.POST("/login", login)
 	router.POST("/logout", logout)
 	router.GET("/protected", protected)
+	router.POST("/vault/:id", ViewVault)
+	router.POST("/upload", UploadVault)
 	router.Run(":3000")
 }
 
@@ -160,18 +162,25 @@ func UploadVault(minato *gin.Context) {
 
 	if err != nil {
 		http.Error(itachi, "File is needed", http.StatusNotFound)
+		return
 	}
 
 	id := uuid.New().String()
 	fullName := id + filepath.Ext(file.Filename)
 	password := shisui.FormValue("password")
+	encryptedpassword, err := hashPassword(password)
+	if err != nil {
+		http.Error(itachi, "Hashing failed", http.StatusInternalServerError)
+		return
+	}
 	path := filepath.Join("./uploads", fullName)
 
-	upload[id] = UploadedFile{
-		FileName: fullName,
-		Password: password,
-		Path:     path,
-	}
+	content, _ := upload[id]
+	content.FileName = fullName
+	content.HashedPassword = encryptedpassword
+	content.Path = path
+
+	upload[id] = content
 
 	err = minato.SaveUploadedFile(file, path)
 	if err != nil {
@@ -186,7 +195,9 @@ func ViewVault(minato *gin.Context) {
 
 	if err := Authorize(shisui); err != nil {
 		http.Error(itachi, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
+
 	id := minato.Param("id")
 	password := shisui.FormValue("password")
 	file, ok := upload[id]
@@ -196,7 +207,7 @@ func ViewVault(minato *gin.Context) {
 		return
 	}
 
-	if password != file.Password {
+	if !checkPasswordHash(password, file.HashedPassword) {
 		http.Error(itachi, "Incorrect password.", http.StatusUnauthorized)
 		return
 	}
