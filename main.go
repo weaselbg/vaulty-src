@@ -36,9 +36,10 @@ func main() {
 	router.POST("/register", register)
 	router.POST("/login", login)
 	router.POST("/logout", logout)
-	router.GET("/protected", protected)
-	router.POST("/vault/:id", ViewVault)
-	router.POST("/upload", UploadVault)
+	router.POST("/vault/create", UploadVault)
+	router.GET("/vault/:id", ViewVault)
+	router.GET("/vault/all", viewAllVault)
+	router.DELETE("/vault/delete", DeleteVault)
 	router.Run(":3000")
 }
 
@@ -159,6 +160,7 @@ func UploadVault(minato *gin.Context) {
 	cookie, err := shisui.Cookie("session_token")
 	if err != nil {
 		http.Error(itachi, "Unauthenticated", http.StatusUnauthorized)
+		return
 	}
 
 	sessionToken := cookie.Value
@@ -168,7 +170,7 @@ func UploadVault(minato *gin.Context) {
 	for name, user := range users {
 		if sessionToken == user.SessionToken {
 			username = name
-			return
+			break
 		}
 	}
 
@@ -181,7 +183,6 @@ func UploadVault(minato *gin.Context) {
 
 	if err != nil {
 		http.Error(itachi, "File is needed", http.StatusNotFound)
-		return
 	}
 
 	id := uuid.New().String()
@@ -202,6 +203,7 @@ func UploadVault(minato *gin.Context) {
 		Password: hashedpassword,
 		Path:     path,
 		ID:       id,
+		Owner:    username,
 	}
 
 	err = minato.SaveUploadedFile(file, path)
@@ -219,7 +221,6 @@ func ViewVault(minato *gin.Context) {
 		http.Error(itachi, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-
 	id := minato.Param("id")
 	password := shisui.FormValue("password")
 	file, ok := upload[id]
@@ -239,9 +240,22 @@ func ViewVault(minato *gin.Context) {
 func DeleteVault(minato *gin.Context) {
 	itachi := minato.Writer
 	shisui := minato.Request
+	cookie, err := shisui.Cookie("session_token")
 
-	if err := Authorize(shisui); err != nil {
+	var username string
+	sessionToken := cookie.Value
+
+	for name, user := range users {
+		if sessionToken == user.SessionToken {
+			username = name
+
+			break
+		}
+	}
+
+	if err = Authorize(shisui); err != nil {
 		http.Error(itachi, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
 
 	filepassword := shisui.FormValue("password")
@@ -254,6 +268,11 @@ func DeleteVault(minato *gin.Context) {
 
 	if !ok {
 		http.Error(itachi, "File not found.", http.StatusNotFound)
+		return
+	}
+
+	if file.Owner != username {
+		http.Error(itachi, "You are not the owner of the upload.", http.StatusForbidden)
 		return
 	}
 
@@ -288,7 +307,7 @@ func viewAllVault(minato *gin.Context) {
 	for name, user := range users {
 		if sessionToken == user.SessionToken {
 			username = name
-			return
+			break
 		}
 	}
 
