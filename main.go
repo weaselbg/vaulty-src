@@ -153,17 +153,21 @@ func logout(minato *gin.Context) {
 func UploadVault(minato *gin.Context) {
 	itachi := minato.Writer
 	shisui := minato.Request
-	username := shisui.FormValue("username")
-	password := shisui.FormValue("userpassword")
 
-	user, ok := users[username]
-	if !ok {
-		http.Error(itachi, "User does not exist.", http.StatusNotFound)
-		return
+	cookie, err := shisui.Cookie("session_token")
+	if err != nil {
+		http.Error(itachi, "Unauthenticated", http.StatusUnauthorized)
 	}
-	if !checkPasswordHash(password, user.HashedPassword) {
-		http.Error(itachi, "Wrong password.", http.StatusUnauthorized)
-		return
+
+	sessionToken := cookie.Value
+
+	var username string
+
+	for name, user := range users {
+		if sessionToken == user.SessionToken {
+			username = name
+			return
+		}
 	}
 
 	if err := Authorize(shisui); err != nil {
@@ -262,11 +266,28 @@ func DeleteVault(minato *gin.Context) {
 func viewAllVault(minato *gin.Context) {
 	shisui := minato.Request
 	itachi := minato.Writer
-	username := minato.Param("username")
+
 	if err := Authorize(shisui); err != nil {
 		http.Error(itachi, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+
+	cookie, err := shisui.Cookie("session_token")
+	if err != nil {
+		http.Error(itachi, "Unauthenticated", http.StatusUnauthorized)
+		return
+	}
+
+	sessionToken := cookie.Value
+	var username string
+
+	for name, user := range users {
+		if sessionToken == user.SessionToken {
+			username = name
+			return
+		}
+	}
+
 	for _, file := range upload {
 		if file.Owner == username {
 			fmt.Println(file.ID)
