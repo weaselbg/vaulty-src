@@ -37,6 +37,8 @@ func main() {
 	router.POST("/login", login)
 	router.POST("/logout", logout)
 	router.GET("/protected", protected)
+	router.POST("/vault/:id", ViewVault)
+	router.POST("/upload", UploadVault)
 	router.Run(":3000")
 }
 
@@ -179,6 +181,7 @@ func UploadVault(minato *gin.Context) {
 
 	if err != nil {
 		http.Error(itachi, "File is needed", http.StatusNotFound)
+		return
 	}
 
 	id := uuid.New().String()
@@ -216,6 +219,7 @@ func ViewVault(minato *gin.Context) {
 		http.Error(itachi, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	id := minato.Param("id")
 	password := shisui.FormValue("password")
 	file, ok := upload[id]
