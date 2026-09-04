@@ -3,15 +3,25 @@ package main
 import (
 	"errors"
 	"net/http"
+
+	"context"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var AuthError = errors.New("Unauthorized")
 
 func Authorize(shisui *http.Request) error {
 	username := shisui.FormValue("username")
-	user, ok := users[username]
+	var user User
+	filter := bson.M{"username": username}
+	err := loginInfo.FindOne(
+		context.Background(),
+		filter,
+	).Decode(&user)
 
-	if !ok {
+	if err == mongo.ErrNoDocuments {
 		return AuthError
 	}
 
@@ -28,4 +38,5 @@ func Authorize(shisui *http.Request) error {
 	}
 
 	return nil
+
 }
